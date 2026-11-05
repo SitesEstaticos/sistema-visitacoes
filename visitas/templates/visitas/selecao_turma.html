@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pt-BR" class="h-full">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Selecionar turma · SNCT IFPI</title>
+</head>
+
+<body class="flex h-full flex-col bg-slate-100 text-slate-900">
+    <header class="bg-slate-950 text-white">
+        <div class="mx-auto flex max-w-5xl items-center justify-between p-4">
+            <div class="flex items-center gap-3">
+                <img src="/static/visitas/23-SNCT1.png" alt="SNCT IFPI" class="h-10 w-auto object-contain">
+                <h1 class="text-xl font-black">Visitações</h1>
+            </div>
+            <div class="flex items-center gap-3 text-sm">
+                <span>{{ request.user.username }}</span>
+                <form method="post" action="{% url 'logout' %}">
+                    {% csrf_token %}
+                    <button class="rounded-lg border border-slate-600 px-3 py-2">Sair</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto w-full max-w-5xl flex-grow p-4 py-8">
+        <!-- Botão de acesso rápido caso o usuário já tenha uma turma atribuída -->
+        {% if turma_atual %}
+        <div class="mb-6 rounded-2xl bg-emerald-700 p-4 text-white shadow-md flex items-center justify-between">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-wider text-emerald-200">Você já possui uma turma ativa</p>
+                <p class="text-lg font-bold">{{ turma_atual.name }}</p>
+            </div>
+            <a href="{% url 'mapa' %}" class="rounded-xl bg-white px-5 py-2.5 font-bold text-emerald-800 shadow hover:bg-emerald-50 transition">
+                Ver minha turma (Mapa)
+            </a>
+        </div>
+        {% endif %}
+
+        <h2 class="text-3xl font-black">Selecione sua turma</h2>
+        <p class="mt-2 text-slate-600">Um guia pode conduzir apenas uma turma por vez. Escolha apenas uma opção abaixo:</p>
+
+        {% if messages %}
+        <div class="my-5 space-y-2">
+            {% for message in messages %}
+            <p class="rounded-xl bg-white p-3 shadow-sm {% if message.tags == 'error' %}text-red-700{% else %}text-emerald-800{% endif %}">
+                {{ message }}
+            </p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="post" class="mt-6">
+            {% csrf_token %}
+            <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {% for group in groups %}
+                <label class="block cursor-pointer">
+                    <!-- Input unificado em uma linha para evitar erro de template do Django -->
+                    <input class="peer sr-only" type="radio" name="group_id" value="{{ group.id }}" {% if group.status != 'disponivel' or group.current_guide_id %}disabled{% endif %} required>
+                    <div class="h-full rounded-2xl border-2 border-white bg-white p-5 shadow-sm transition peer-checked:border-emerald-600 peer-checked:bg-emerald-50 peer-disabled:opacity-55">
+                        <div class="flex items-start justify-between gap-2">
+                            <strong class="text-lg">{{ group.name }}</strong>
+                            <span class="rounded-full px-2 py-1 text-xs font-bold {% if group.status == 'disponivel' and not group.current_guide_id %}bg-emerald-100 text-emerald-800{% else %}bg-slate-200 text-slate-700{% endif %}">
+                                {{ group.get_status_display }}
+                            </span>
+                        </div>
+                        {% if group.current_guide %}
+                        <p class="mt-2 text-sm text-slate-500">Guia: {{ group.current_guide.username }}</p>
+                        {% endif %}
+                    </div>
+                </label>
+                {% empty %}
+                <p class="rounded-xl bg-white p-5 text-slate-600">Nenhuma turma cadastrada. Solicite à coordenação que cadastre turmas no painel administrativo.</p>
+                {% endfor %}
+            </div>
+
+            <button class="mt-6 rounded-xl bg-emerald-700 px-6 py-3 font-bold text-white hover:bg-emerald-800 shadow">
+                Assumir turma selecionada
+            </button>
+        </form>
+    </main>
+
+    <footer class="mt-auto border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-500">
+        <div class="mx-auto max-w-7xl px-4">
+            <p class="font-bold text-slate-700">Desenvolvido por M³ Technology.BR</p>
+            <p class="mt-1">SNCT · IFPI Campus Floriano | Sistema de Gestão de Visitações</p>
+        </div>
+    </footer>
+</body>
+
+</html>

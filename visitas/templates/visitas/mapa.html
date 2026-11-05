@@ -1,0 +1,142 @@
+{% load l10n %}
+<!doctype html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/@panzoom/panzoom@4.6.1/dist/panzoom.min.js"></script>
+    <title>Mapa · {{ group.name }}</title>
+    <style>
+        html,
+        body {
+            overscroll-behavior: none
+        }
+
+        .map-viewport {
+            height: min(70vh, 720px);
+            overflow: hidden;
+            touch-action: none
+        }
+
+        .map-canvas {
+            position: relative;
+            width: 1200px;
+            max-width: none;
+            transform-origin: 0 0
+        }
+
+        .map-canvas img {
+            display: block;
+            width: 100%;
+            height: auto;
+            min-height: 650px;
+            object-fit: cover;
+            background: #e2e8f0
+        }
+
+        .room-pin {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            z-index: 2
+        }
+
+        .room-pin.stale {
+            animation: pulse 1.2s infinite;
+            background: #f59e0b !important;
+            color: #111827 !important
+        }
+
+        @keyframes pulse {
+            50% {
+                filter: brightness(1.35);
+                box-shadow: 0 0 0 9px #f59e0b55
+            }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen bg-slate-100 text-slate-900">
+    <div id="offline-banner" class="hidden bg-red-700 px-4 py-3 text-center font-bold text-white" role="alert">
+        Você está offline. Mapa desatualizado
+    </div>
+
+    <header class="bg-slate-950 text-white">
+        <div class="mx-auto flex max-w-7xl items-center justify-between gap-3 p-4">
+            <div>
+                <!-- Substitua o src pelo caminho correto da imagem da logo da SNCT na pasta static -->
+                <img src="/static/visitas/23-SNCT3.png" alt="SNCT IFPI" class="h-10 w-auto object-contain">
+                <h1 class="text-lg font-black">{{ group.name }} · mapa do campus Floriano</h1>
+            </div>
+            <div class="flex items-center gap-3">
+                <!-- <a href="{% url 'selecao_turma' %}"
+                    class="rounded-xl bg-slate-800 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-slate-700">Trocar
+                    Turma</a> -->
+                <form method="post" action="{% url 'encerrar_visitacao' %}"
+                    onsubmit="return confirm('Encerrar a visitação? Todas as salas ocupadas por esta turma serão liberadas.');">
+                    {% csrf_token %}
+                    <button class="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold">Encerrar visitação</button>
+                </form>
+            </div>
+        </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl p-4">
+        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <p class="text-sm text-slate-600">Toque/clique em um marcador para alternar o estado. Arraste para mover;
+                pinça para zoom.</p>
+            <div class="flex gap-3 text-xs font-semibold">
+                <span><i class="mr-1 inline-block h-3 w-3 rounded-full bg-emerald-600"></i>Livre</span>
+                <span><i class="mr-1 inline-block h-3 w-3 rounded-full bg-red-600"></i>Ocupada</span>
+                <span><i class="mr-1 inline-block h-3 w-3 rounded-full bg-amber-500"></i>Mais de 15 min</span>
+            </div>
+        </div>
+
+        <section id="map-viewport" class="map-viewport rounded-2xl border border-slate-300 bg-slate-200 shadow-inner">
+            <div id="map-canvas" class="map-canvas">
+                <!-- ATENÇÃO: INSERIR IMAGEM DO MAPA DA SNCT AQUI -->
+                <img src="/static/visitas/mapa-campus.png"
+                    alt="Planta baixa do campus; substitua pelo mapa oficial da SNCT"
+                    onerror="this.style.background='linear-gradient(135deg,#dbeafe,#dcfce7)';this.alt='Mapa ilustrativo: adicione o mapa oficial do campus';">
+
+                {% for room in rooms %}
+                <button
+                    class="room-pin rounded-full px-3 py-2 text-xs font-black text-white shadow-lg {% if room.status == 'ocupada' %}bg-red-600{% else %}bg-emerald-700{% endif %}"
+                    id="room-{{ room.id }}" data-room-id="{{ room.id }}" data-status="{{ room.status }}"
+                    data-occupied-at="{{ room.occupied_at|date:'c'|default:'' }}"
+                    style="left:{{ room.x_position|unlocalize }}%;top:{{ room.y_position|unlocalize }}%"
+                    aria-label="{{ room.name }}: {{ room.get_status_display }}">{{ room.name }}</button>
+                {% endfor %}
+            </div>
+        </section>
+
+        <p id="last-updated" class="mt-2 text-xs text-slate-500">Sincronizando…</p>
+        <div id="toast"
+            class="fixed bottom-4 left-1/2 hidden -translate-x-1/2 rounded-xl bg-slate-950 px-4 py-3 text-white shadow-xl"
+            role="status"></div>
+    </main>
+    <footer class="mt-auto border-t border-slate- py-6 text-center text-xs text-slate-500">
+        <div class="mx-auto max-w-7xl px-4">
+            <p class="font-bold text-slate-700">Desenvolvido por M³ Technology.BR</p>
+            <p class="mt-1">SNCT · IFPI Campus Floriano | Sistema de Gestão de Visitações</p>
+        </div>
+    </footer>
+    <script>
+        (() => {
+            const canvas = document.getElementById('map-canvas');
+            const panzoom = Panzoom(canvas, { maxScale: 4, minScale: 0.5, contain: 'outside', canvas: true });
+            document.getElementById('map-viewport').addEventListener('wheel', panzoom.zoomWithWheel);
+            let toastTimer;
+            function toast(text) { const el = document.getElementById('toast'); el.textContent = text; el.classList.remove('hidden'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.add('hidden'), 2800) }
+            function updatePin(room) { const pin = document.getElementById(`room-${room.id}`); if (!pin) return; pin.dataset.status = room.status; pin.dataset.occupiedAt = room.occupied_at || ''; pin.textContent = room.name; pin.setAttribute('aria-label', `${room.name}: ${room.status_label}${room.current_group ? `, ${room.current_group}` : ''}`); pin.classList.toggle('bg-red-600', room.status === 'ocupada'); pin.classList.toggle('bg-emerald-700', room.status !== 'ocupada'); pin.style.left = `${room.x_position}%`; pin.style.top = `${room.y_position}%` }
+            function refreshAges() { const now = Date.now(); document.querySelectorAll('.room-pin').forEach(pin => { const t = pin.dataset.occupiedAt ? Date.parse(pin.dataset.occupiedAt) : NaN; pin.classList.toggle('stale', pin.dataset.status === 'ocupada' && Number.isFinite(t) && now - t > 15 * 60 * 1000) }) }
+            async function poll() { try { const response = await fetch('{% url "api_polling" %}', { headers: { 'X-Requested-With': 'XMLHttpRequest' }, cache: 'no-store' }); if (!response.ok) throw new Error(`HTTP ${response.status}`); const data = await response.json(); data.rooms.forEach(updatePin); document.getElementById('offline-banner').classList.add('hidden'); document.getElementById('last-updated').textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR')}` } catch (error) { document.getElementById('offline-banner').classList.remove('hidden'); document.getElementById('last-updated').textContent = 'Não foi possível sincronizar. Os dados exibidos podem estar desatualizados.' } refreshAges() }
+            document.querySelectorAll('.room-pin').forEach(pin => pin.addEventListener('click', async () => { try { const response = await fetch(`/api/salas/${pin.dataset.roomId}/alternar/`, { method: 'POST', headers: { 'X-CSRFToken': getCookie('csrftoken'), 'X-Requested-With': 'XMLHttpRequest' } }); const data = await response.json(); if (!response.ok) throw new Error(data.error || 'Não foi possível atualizar a sala.'); updatePin(data); refreshAges(); toast(`${data.name}: ${data.status_label}`) } catch (error) { if (!navigator.onLine) document.getElementById('offline-banner').classList.remove('hidden'); toast(error.message) } }));
+            function getCookie(name) { const item = document.cookie.split('; ').find(row => row.startsWith(name + '=')); return item ? decodeURIComponent(item.split('=').slice(1).join('=')) : '' }
+            poll(); setInterval(poll, 5000); setInterval(refreshAges, 15000); window.addEventListener('online', poll); window.addEventListener('offline', () => document.getElementById('offline-banner').classList.remove('hidden'));
+        })();
+    </script>
+</body>
+
+</html>
